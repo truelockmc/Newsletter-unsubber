@@ -1,0 +1,39 @@
+Subject: Widerruf der Einwilligung zur Zusendung von Werbe-E-Mails / Revocation of Consent to Receive Marketing Emails
+
+---ENGLISH---
+
+Dear {provider} team,
+
+I am writing to formally request the removal of my email address ({email}) from your mailing list and to revoke any consent I may have given for the receipt of marketing communications.
+
+In accordance with Article 21 of the General Data Protection Regulation (GDPR), I hereby object to the processing of my personal data for direct marketing purposes. Furthermore, I request the erasure of my email address and any associated personal data from your systems under Article 17 GDPR, to the extent that no other legal basis for processing exists.
+
+Please confirm in writing that:
+  1. My email address has been removed from all mailing lists.
+  2. No further marketing emails will be sent to my address.
+  3. My personal data has been deleted or anonymized where applicable.
+
+I expect this request to be processed within 30 days as required by GDPR. Should I not receive confirmation within this period, I reserve the right to file a complaint with the competent supervisory authority.
+
+Thank you for your prompt attention to this matter.
+
+Kind regards,
+{name}
+
+---DEUTSCH---
+
+Sehr geehrtes {provider}-Team,
+
+hiermit widerrufe ich meine erteilte Einwilligung zur Zusendung von Werbe-E-Mails und bitte Sie, meine E-Mail-Adresse ({email}) unverzüglich aus Ihrem Verteiler zu entfernen.
+
+Gemäß Art. 21 Abs. 2 DSGVO widerspreche ich ausdrücklich der Verarbeitung meiner personenbezogenen Daten zum Zweck der Direktwerbung. Darüber hinaus beantrage ich nach Art. 17 DSGVO die Löschung meiner E-Mail-Adresse sowie aller damit verbundenen personenbezogenen Daten aus Ihren Systemen, soweit keine vorrangige Rechtsgrundlage für die weitere Verarbeitung besteht.
+
+Ich bitte um schriftliche Bestätigung, dass:
+  1. Meine E-Mail-Adresse aus allen Verteilern entfernt wurde.
+  2. Keine weiteren Werbe-E-Mails an meine Adresse gesendet werden.
+  3. Meine personenbezogenen Daten gelöscht oder anonymisiert wurden.
+
+Ich erwarte die Bearbeitung meiner Anfrage innerhalb von 30 Tagen gemäß den Vorgaben der DSGVO. Sollte ich innerhalb dieser Frist keine Bestätigung erhalten, behalte ich mir vor, Beschwerde bei der zuständigen Datenschutzaufsichtsbehörde einzureichen.
+
+Mit freundlichen Grüßen,
+{name}

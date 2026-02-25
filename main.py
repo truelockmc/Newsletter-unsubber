@@ -1,170 +1,302 @@
-import tkinter as tk
+"""
+Newsletter Unsubscribe Tool
+Dependencies: pip install customtkinter keyring cryptography
+"""
+
+import customtkinter as ctk
 from tkinter import messagebox
-from cryptography.fernet import Fernet
-import os
+import keyring
 import smtplib
-from email.mime.text import MIMEText
 import re
+import os
+import sys
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from pathlib import Path
 
-# Funktion zum Generieren und Speichern eines Schlüssels
-def generate_key():
-    return Fernet.generate_key()
+# ── Constants ────────────────────────────────────────────────────────────────
+APP_NAME        = "NewsletterUnsub"
+KEYRING_EMAIL   = "email"
+KEYRING_PASS    = "password"
+KEYRING_NAME    = "display_name"
+TEMPLATE_FILE   = Path(__file__).parent / "mail_template.txt"
 
-# Funktion zum Speichern von Zugangsdaten
-def save_credentials(email, password, name):
-    key = generate_key()
-    cipher = Fernet(key)
-    encrypted_email = cipher.encrypt(email.encode())
-    encrypted_password = cipher.encrypt(password.encode())
-    encrypted_name = cipher.encrypt(name.encode())
+SMTP_MAP = {
+    "gmail.com":       ("smtp.gmail.com",        587),
+    "yahoo.com":       ("smtp.mail.yahoo.com",   587),
+    "outlook.com":     ("smtp.office365.com",    587),
+    "hotmail.com":     ("smtp.live.com",         587),
+    "aol.com":         ("smtp.aol.com",          587),
+    "t-online.de":     ("securesmtp.t-online.de",587),
+    "web.de":          ("smtp.web.de",           587),
+    "gmx.de":          ("mail.gmx.net",          587),
+    "gmx.com":         ("mail.gmx.net",          587),
+    "icloud.com":      ("smtp.mail.me.com",      587),
+    "freenet.de":      ("mx.freenet.de",         587),
+    "posteo.de":       ("posteo.de",             587),
+    "protonmail.com":  ("smtp.protonmail.ch",    587),
+}
 
-    with open('credentials.dat', 'wb') as f:
-        f.write(key + b'\n' + encrypted_email + b'\n' + encrypted_password + b'\n' + encrypted_name)
+# ── Appearance ────────────────────────────────────────────────────────────────
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
-# Funktion zum Laden von Zugangsdaten
-def load_credentials():
-    with open('credentials.dat', 'rb') as f:
-        key = f.readline().strip()
-        encrypted_email = f.readline().strip()
-        encrypted_password = f.readline().strip()
-        encrypted_name = f.readline().strip()
 
-    cipher = Fernet(key)
-    email = cipher.decrypt(encrypted_email).decode()
-    password = cipher.decrypt(encrypted_password).decode()
-    name = cipher.decrypt(encrypted_name).decode()
+# ── Credential helpers ────────────────────────────────────────────────────────
+
+def save_credentials(email: str, password: str, name: str) -> None:
+    """Store credentials securely via the OS keyring."""
+    keyring.set_password(APP_NAME, KEYRING_EMAIL, email)
+    keyring.set_password(APP_NAME, KEYRING_PASS,  password)
+    keyring.set_password(APP_NAME, KEYRING_NAME,  name)
+
+
+def load_credentials() -> tuple[str, str, str]:
+    """Return (email, password, name) from the OS keyring."""
+    email    = keyring.get_password(APP_NAME, KEYRING_EMAIL) or ""
+    password = keyring.get_password(APP_NAME, KEYRING_PASS)  or ""
+    name     = keyring.get_password(APP_NAME, KEYRING_NAME)  or ""
     return email, password, name
 
-# GUI für die Eingabe von E-Mail, Passwort und Name beim Start
-def setup_credentials_gui():
-    def save_and_close():
-        email = email_entry.get()
-        password = password_entry.get()
-        name = name_entry.get()
 
-        if not email or not password or not name:
-            messagebox.showerror("Error", "Please fill out all fields.")
-            return
-        
-        save_credentials(email, password, name)
-        setup_window.destroy()
-        create_gui()  # Haupt-GUI öffnen, wenn die Daten gespeichert wurden
+def credentials_exist() -> bool:
+    email, _, _ = load_credentials()
+    return bool(email)
 
-    setup_window = tk.Tk()
-    setup_window.title("Setup Credentials")
-    setup_window.configure(bg="#2E2E2E")
 
-    email_label = tk.Label(setup_window, text="Email:", bg="#2E2E2E", fg="white")
-    email_label.pack(pady=5)
-    email_entry = tk.Entry(setup_window, bg="#4E4E4E", fg="white")
-    email_entry.pack(pady=5)
-
-    password_label = tk.Label(setup_window, text="Password:", bg="#2E2E2E", fg="white")
-    password_label.pack(pady=5)
-    password_entry = tk.Entry(setup_window, show='*', bg="#4E4E4E", fg="white")
-    password_entry.pack(pady=5)
-
-    name_label = tk.Label(setup_window, text="Your Name:", bg="#2E2E2E", fg="white")
-    name_label.pack(pady=5)
-    name_entry = tk.Entry(setup_window, bg="#4E4E4E", fg="white")
-    name_entry.pack(pady=5)
-
-    save_button = tk.Button(setup_window, text="Save", command=save_and_close, bg="#4E4E4E", fg="white")
-    save_button.pack(pady=20)
-
-    setup_window.mainloop()
-
-# Funktion zum Senden der E-Mail
-def send_email():
-    try:
-        email, password, name = load_credentials()
-        provider = provider_entry.get()
-
-        subject = "Unsubscribe from Your Newsletter / Abmeldung von Ihrem Newsletter"
-        body = f"""Dear {provider},\n\nI would like to unsubscribe from your newsletter. 
-Please remove my email address {email} from your mailing list.\n\n
-I kindly request a confirmation of my unsubscription.\n\n
-Thank you for your assistance.\n\n
-Best regards,\n{name}"""
-
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = email
-        msg['To'] = provider
-
-        smtp_server, smtp_port = get_smtp_info(email)
-
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            server.login(email, password)
-            server.sendmail(email, provider, msg.as_string())
-
-        messagebox.showinfo("Success", "Email sent successfully.")
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
-
-# Funktion zum Ermitteln des SMTP-Servers
-def get_smtp_info(email):
-    if re.match(r".*@gmail\.com", email):
-        return "smtp.gmail.com", 587
-    elif re.match(r".*@yahoo\.com", email):
-        return "smtp.mail.yahoo.com", 587
-    elif re.match(r".*@outlook\.com", email):
-        return "smtp.office365.com", 587
-    elif re.match(r".*@hotmail\.com", email):
-        return "smtp.live.com", 587
-    elif re.match(r".*@aol\.com", email):
-        return "smtp.aol.com", 587
-    elif re.match(r".*@t-online\.de", email):
-        return "securesmtp.t-online.de", 587
-    elif re.match(r".*@web\.de", email):
-        return "smtp.web.de", 587
-    elif re.match(r".*@gmx\.de", email) or re.match(r".*@gmx\.com", email):
-        return "mail.gmx.net", 587
-    elif re.match(r".*@icloud\.com", email):
-        return "smtp.mail.me.com", 587
-    else:
-        smtp_server = input("Please enter your SMTP server (e.g., smtp.yourprovider.com): ")
-        smtp_port = input("Please enter the SMTP port (usually 587 for TLS): ")
-        if not smtp_server or not smtp_port:
-            raise ValueError("SMTP server and port are required for unsupported providers.")
-        return smtp_server, int(smtp_port)
-
-# Haupt-GUI erstellen
-def create_gui():
-    root = tk.Tk()
-    root.title("Newsletter Unsubscribe")
-    root.configure(bg="#2E2E2E")
-
-    global provider_entry
-    provider_label = tk.Label(root, text="Newsletter Provider:", bg="#2E2E2E", fg="white")
-    provider_label.pack(pady=5)
-    provider_entry = tk.Entry(root, bg="#4E4E4E", fg="white")
-    provider_entry.pack(pady=5)
-
-    send_button = tk.Button(root, text="Send Unsubscribe Email", command=send_email, bg="#4E4E4E", fg="white")
-    send_button.pack(pady=20)
-
-    change_button = tk.Button(root, text="Change Your Data", command=change_data, bg="#4E4E4E", fg="white")
-    change_button.pack(pady=5)
-
-    root.mainloop()
-
-# Funktion zum Ändern der gespeicherten Daten
-def change_data():
-    if os.path.exists('credentials.dat'):
-        os.remove('credentials.dat')
-    messagebox.showinfo("Info", "Credentials deleted. Please restart the program to enter new credentials.")
-    exit()
-
-# Hauptprogramm
-if __name__ == "__main__":
-    if not os.path.exists('credentials.dat'):
-        setup_credentials_gui()
-    else:
+def delete_credentials() -> None:
+    for key in (KEYRING_EMAIL, KEYRING_PASS, KEYRING_NAME):
         try:
-            load_credentials()  # Überprüfen, ob die Zugangsdaten gültig sind
-            create_gui()  # Haupt-GUI erstellen
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-            setup_credentials_gui()  # Setup-GUI öffnen, wenn ein Fehler auftritt
+            keyring.delete_password(APP_NAME, key)
+        except keyring.errors.PasswordDeleteError:
+            pass
+
+
+# ── SMTP helper ───────────────────────────────────────────────────────────────
+
+def get_smtp_info(email: str) -> tuple[str, int]:
+    domain = email.split("@")[-1].lower()
+    if domain in SMTP_MAP:
+        return SMTP_MAP[domain]
+    raise ValueError(
+        f"SMTP-Server fuer '{domain}' nicht bekannt.\n"
+        "Bitte tragen Sie die Serverdaten manuell in den Quellcode ein\n"
+        "oder wenden Sie sich an Ihren E-Mail-Anbieter."
+    )
+
+
+# ── Mail template ─────────────────────────────────────────────────────────────
+
+def load_template(provider: str, email: str, name: str) -> tuple[str, str]:
+    """Return (subject, body) filled from template file."""
+    if not TEMPLATE_FILE.exists():
+        raise FileNotFoundError(
+            f"Vorlagendatei nicht gefunden: {TEMPLATE_FILE}\n"
+            "Bitte stellen Sie sicher, dass 'mail_template.txt' im selben\n"
+            "Ordner wie dieses Skript liegt."
+        )
+    raw = TEMPLATE_FILE.read_text(encoding="utf-8")
+    lines      = raw.splitlines()
+    subject    = lines[0].replace("Subject:", "").strip()
+    body_lines = lines[2:]   # skip subject + blank line
+    body       = "\n".join(body_lines).format(
+        provider=provider,
+        email=email,
+        name=name,
+    )
+    return subject, body
+
+
+# ── Send email ────────────────────────────────────────────────────────────────
+
+def send_email(provider: str) -> None:
+    email, password, name = load_credentials()
+    smtp_server, smtp_port = get_smtp_info(email)
+    subject, body = load_template(provider, email, name)
+
+    msg                   = MIMEMultipart("alternative")
+    msg["Subject"]        = subject
+    msg["From"]           = f"{name} <{email}>"
+    msg["To"]             = provider
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(email, password)
+        server.sendmail(email, provider, msg.as_string())
+
+
+# ── Setup window ──────────────────────────────────────────────────────────────
+
+class SetupWindow(ctk.CTk):
+    def __init__(self, on_success):
+        super().__init__()
+        self.on_success = on_success
+        self.title("Zugangsdaten einrichten")
+        self.resizable(False, False)
+        self._build_ui()
+        self._center()
+        self.protocol("WM_DELETE_WINDOW", self._quit)
+
+    def _quit(self):
+        self.quit()
+        self.destroy()
+
+    def _build_ui(self):
+        frame = ctk.CTkFrame(self, corner_radius=16, fg_color="transparent")
+        frame.pack(padx=28, pady=24, fill="both", expand=True)
+
+        ctk.CTkLabel(frame, text="⚙  Einrichtung", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(0, 18))
+
+        self.email_var    = ctk.StringVar()
+        self.password_var = ctk.StringVar()
+        self.name_var     = ctk.StringVar()
+
+        _field(frame, "Ihre E-Mail-Adresse",  self.email_var,    placeholder="name@beispiel.de")
+        _field(frame, "E-Mail-Passwort",       self.password_var, placeholder="••••••••••", show="•")
+        _field(frame, "Ihr Name (für Signatur)",self.name_var,    placeholder="Max Mustermann")
+
+        ctk.CTkLabel(
+            frame,
+            text="💡 Tipp: Bei Gmail bitte ein App-Passwort verwenden.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray60",
+            wraplength=300,
+            justify="left",
+        ).pack(anchor="w", padx=2, pady=(4, 14))
+
+        ctk.CTkButton(frame, text="Speichern & weiter", corner_radius=10,
+                      command=self._save, height=38).pack(fill="x")
+
+    def _save(self):
+        email    = self.email_var.get().strip()
+        password = self.password_var.get()
+        name     = self.name_var.get().strip()
+
+        if not all([email, password, name]):
+            messagebox.showerror("Fehler", "Bitte alle Felder ausfüllen.", parent=self)
+            return
+        if "@" not in email:
+            messagebox.showerror("Fehler", "Bitte eine gültige E-Mail-Adresse eingeben.", parent=self)
+            return
+
+        save_credentials(email, password, name)
+        self.quit()
+        self.destroy()
+        self.on_success()
+
+    def _center(self):
+        self.update_idletasks()
+        x = (self.winfo_screenwidth()  - self.winfo_width())  // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ── Main window ───────────────────────────────────────────────────────────────
+
+class MainWindow(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Newsletter Abmelden")
+        self.resizable(False, False)
+        self._build_ui()
+        self._center()
+        self.protocol("WM_DELETE_WINDOW", self._quit)
+
+    def _quit(self):
+        self.quit()
+        self.destroy()
+
+    def _build_ui(self):
+        frame = ctk.CTkFrame(self, corner_radius=16, fg_color="transparent")
+        frame.pack(padx=28, pady=24, fill="both", expand=True)
+
+        ctk.CTkLabel(frame, text="✉  Newsletter abmelden",
+                     font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(0, 6))
+
+        email, _, name = load_credentials()
+        ctk.CTkLabel(
+            frame,
+            text=f"Gesendet als: {name} <{email}>",
+            font=ctk.CTkFont(size=11),
+            text_color="gray60",
+        ).pack(pady=(0, 18))
+
+        ctk.CTkLabel(frame, text="Absender-Adresse des Newsletters",
+                     anchor="w", font=ctk.CTkFont(size=13)).pack(fill="x", padx=2)
+        self.provider_var = ctk.StringVar()
+        ctk.CTkEntry(frame, textvariable=self.provider_var,
+                     placeholder_text="newsletter@beispiel.de",
+                     corner_radius=10, height=36).pack(fill="x", pady=(4, 16))
+
+        ctk.CTkButton(frame, text="  Abmelde-E-Mail senden", corner_radius=10,
+                      height=38, command=self._send).pack(fill="x")
+
+        ctk.CTkButton(frame, text="Zugangsdaten ändern", corner_radius=10,
+                      height=32, fg_color="transparent", border_width=1,
+                      hover_color=("gray85","gray25"),
+                      command=self._change_data).pack(fill="x", pady=(8, 0))
+
+    def _send(self):
+        provider = self.provider_var.get().strip()
+        if not provider:
+            messagebox.showwarning("Hinweis", "Bitte die Newsletter-Adresse eingeben.", parent=self)
+            return
+
+        try:
+            send_email(provider)
+            messagebox.showinfo("Erfolg", f"Abmelde-E-Mail wurde erfolgreich an\n{provider}\ngesendet.", parent=self)
+            self.provider_var.set("")
+        except Exception as exc:
+            messagebox.showerror("Fehler beim Senden", str(exc), parent=self)
+
+    def _change_data(self):
+        delete_credentials()
+        messagebox.showinfo(
+            "Erledigt",
+            "Zugangsdaten wurden gelöscht.\nDas Programm wird jetzt neu gestartet.",
+            parent=self,
+        )
+        self.quit()
+        self.destroy()
+        _run_setup()
+
+    def _center(self):
+        self.update_idletasks()
+        x = (self.winfo_screenwidth()  - self.winfo_width())  // 2
+        y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{x}+{y}")
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _field(parent, label: str, var: ctk.StringVar,
+           placeholder: str = "", show: str = "") -> None:
+    ctk.CTkLabel(parent, text=label, anchor="w",
+                 font=ctk.CTkFont(size=13)).pack(fill="x", padx=2)
+    kwargs = dict(textvariable=var, placeholder_text=placeholder,
+                  corner_radius=10, height=36)
+    if show:
+        kwargs["show"] = show
+    ctk.CTkEntry(parent, **kwargs).pack(fill="x", pady=(4, 12))
+
+
+def _run_main():
+    app = MainWindow()
+    app.mainloop()
+
+
+def _run_setup():
+    app = SetupWindow(on_success=_run_main)
+    app.mainloop()
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    if credentials_exist():
+        _run_main()
+    else:
+        _run_setup()
